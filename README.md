@@ -5,22 +5,22 @@
 ## 工作原理
 
 ```
-应用 (curl, git, node ...)
+应用 (curl, git, node, chrome ...)
    |
-   |--- 模式 A: WinDivert 内核拦截 (代理添加) ---|
-   |                                              v
-   |                                     ProxyBridge_CLI.exe
-   |                                              |
-   |                                     SOCKS5 转发
-   |                                              v
-   |                                     sing-box.exe (127.0.0.1:7890)
-   |                                              |
-   |                                              v
-   |                                     远程服务器 / 互联网
+   |--- 模式 A: WinDivert 内核拦截 (按应用透明代理) ---|
+   |                                                    v
+   |                                           ProxyBridge_CLI.exe
+   |                                                    |
+   |                                           SOCKS5 转发
+   |                                                    v
+   |                                           sing-box.exe (127.0.0.1:7890)
+   |                                                    |
+   |                                                    v
+   |                                           远程服务器 / 互联网
    |
    |--- 模式 B: 环境变量注入 (命令代理) ---|
               v
-           proxy run <command>
+           proxy <command>
               |
               | 设置 ALL_PROXY/HTTP_PROXY/HTTPS_PROXY + 工具参数
               v
@@ -30,14 +30,75 @@
            远程服务器 / 互联网
 ```
 
-**两种代理模式：**
+**三种代理模式：**
 
-| 模式 | 命令 | 原理 | 状态 |
-|------|------|------|------|
-| 按应用透明代理 | `proxy add curl` → `proxy start` | ProxyBridge + WinDivert 内核驱动拦截进程网络流量 | ❌ ProxyBridge V4.0.0 兼容性问题 |
-| 命令代理 | `proxy curl https://...` | 设置 `ALL_PROXY` 环境变量 + curl `--proxy` 参数 | ✅ 已验证可用 |
+| 模式 | 命令 | 原理 | 适用场景 |
+|------|------|------|----------|
+| 按应用透明代理 | `proxy add curl` → `proxy start` | ProxyBridge + WinDivert 内核驱动拦截进程网络流量 | 所有应用（curl, git, node, 自定义程序等） |
+| 命令代理 | `proxy curl https://...` | 设置 `ALL_PROXY` 环境变量 + curl `--proxy` 参数 | 命令行工具临时走代理 |
+| 系统代理 | `proxy system` | 设置 Windows 系统代理注册表 | Chrome/Edge 等浏览器 |
 
-> **重要：`proxy add curl` 后直接运行 `curl` 不会走代理。** 因为 ProxyBridge V4.0.0 的 WinDivert 驱动无法正常工作。替代方案：使用 `proxy curl` 或 `proxy run curl`。
+## 快速开始
+
+```powershell
+# 安装
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+
+# 重新打开终端后
+proxy init
+
+# 配置 sing-box（指向你已有的配置文件）
+proxy singbox config "C:\path\to\sing-box.exe" "C:\path\to\config.json"
+
+# 配置代理端口（与 sing-box 的入站端口一致）
+proxy config set socks5 127.0.0.1 7890
+
+# 测试连接
+proxy test
+
+# 启动全部服务
+proxy start
+
+# 验证 WinDivert 透明代理
+curl https://httpbin.org/ip   # 应返回代理 IP
+```
+
+## 按应用透明代理
+
+```powershell
+proxy add curl.exe         # 添加 curl
+proxy add git.exe          # 添加 git
+proxy add chrome.exe       # 添加 Chrome
+proxy add node.exe         # 添加 node
+proxy on git.exe           # 启用代理
+proxy off git.exe          # 禁用代理
+proxy rm git.exe           # 删除应用
+proxy ls                   # 列出所有应用
+```
+
+启动 `proxy start` 后，ProxyBridge 通过 WinDivert 内核驱动拦截已添加应用的所有网络连接，透明转发到 sing-box。应用本身无需任何配置。
+
+```powershell
+proxy start                # 启动服务（自动加载代理规则）
+curl https://www.google.com # 直接 curl 即走代理
+git pull                    # 直接 git 即走代理
+```
+
+## 命令代理
+
+任何不在内置命令列表中的命令会自动通过代理执行：
+
+```powershell
+proxy curl https://www.google.com
+proxy git pull
+proxy npm install
+proxy node app.js
+proxy python script.py
+proxy pip install -r requirements.txt
+proxy run <任意命令> [args...]
+```
+
+原理：临时设置 `ALL_PROXY`、`HTTP_PROXY`、`HTTPS_PROXY` 环境变量，并为 curl/git 等工具注入代理参数（`--proxy`/`-c`），命令结束后自动恢复。
 
 ## 浏览器代理
 
@@ -69,63 +130,6 @@ chrome.exe --proxy-server="socks5://127.0.0.1:7890" --user-data-dir="C:\temp\chr
 ### 方法 4：Chrome 扩展
 
 安装 [FoxyProxy](https://chrome.google.com/webstore/detail/foxyproxy-premium/ljfdkafmojknkokmokjnjajkogmpkiel) 或 [SwitchyOmega](https://chrome.google.com/webstore/detail/switchyomega/padekgcemlokbadohgkifiiomjicklek)，配置 SOCKS5 代理 `127.0.0.1:7890`。
-
-## 快速开始
-
-```powershell
-# 安装
-powershell -ExecutionPolicy Bypass -File .\install.ps1
-
-# 重新打开终端后
-proxy init
-
-# 配置 sing-box（指向你已有的配置文件）
-proxy singbox config "C:\path\to\sing-box.exe" "C:\path\to\config.json"
-
-# 配置代理端口（与 sing-box 的入站端口一致）
-proxy config set socks5 127.0.0.1 7890
-
-# 测试连接
-proxy test
-
-# 启动全部服务
-proxy start
-```
-
-## 命令代理（推荐）
-
-任何不在内置命令列表中的命令会自动通过代理执行。这是最可靠的方式：
-
-```powershell
-proxy curl https://www.google.com
-proxy git pull
-proxy npm install
-proxy node app.js
-proxy python script.py
-proxy pip install -r requirements.txt
-```
-
-也可以显式使用 `proxy run`：
-
-```powershell
-proxy run curl https://www.google.com
-proxy run git status
-```
-
-原理：临时设置 `ALL_PROXY`、`HTTP_PROXY`、`HTTPS_PROXY` 环境变量，并为 curl/git 等工具注入代理参数（`--proxy`/`-c`），命令结束后自动恢复。
-
-## 按应用透明代理（可选，WinDivert 依赖）
-
-```powershell
-proxy add git.exe          # 添加 git
-proxy add curl.exe         # 添加 curl
-proxy on git.exe           # 启用 git 代理
-proxy off git.exe          # 禁用 git 代理
-proxy rm git.exe           # 删除 git
-proxy ls                   # 列出所有应用
-```
-
-启用后，ProxyBridge 会通过 WinDivert 内核驱动拦截该进程的所有网络连接。**注意：需要 ProxyBridge 版本支持 WinDivert，否则此模式不生效。**
 
 ## sing-box 管理
 
@@ -173,13 +177,8 @@ proxy status                        # 显示状态
 proxy test                          # 测试代理连接
 proxy doctor                        # 完整诊断
 
-# 其他
-proxy update                        # 重新生成 profile
-proxy profile                       # 显示并生成 profile
-proxy help                          # 显示帮助
-
-# 命令代理（通过代理执行命令）
-proxy run <command> [args...]        # 通过代理执行任意命令
+# 命令代理
+proxy run <command> [args...]       # 通过代理执行任意命令
 proxy curl https://example.com      # curl 走代理
 proxy git pull                      # git 走代理
 
@@ -187,6 +186,11 @@ proxy git pull                      # git 走代理
 proxy chrome                        # 启动 Chrome 走代理（独立 profile）
 proxy system                        # 设置系统代理（Chrome/Edge 自动走代理）
 proxy system off                    # 关闭系统代理
+
+# 其他
+proxy update                        # 重新生成 profile
+proxy profile                       # 显示并生成 profile
+proxy help                          # 显示帮助
 ```
 
 ## Node CLI
@@ -232,7 +236,7 @@ v2 会识别 `.cmd/.bat/.ps1` wrapper，拒绝自动产生 `node.exe` 全局规�
 
 - Windows 10/11
 - PowerShell 5.1+（需要管理员权限）
-- [ProxyBridge](https://github.com/InterceptSuite/ProxyBridge) — 按应用透明代理（V4.0.0 有 WinDivert 兼容性问题）
+- [ProxyBridge](https://github.com/InterceptSuite/ProxyBridge) V4.0.0+ — 按应用透明代理（WinDivert 内核驱动）
 - [sing-box](https://github.com/SagerNet/sing-box) — 代理核心（需用户提供配置文件）
 
 ## 卸载
