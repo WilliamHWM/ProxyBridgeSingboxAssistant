@@ -38,53 +38,187 @@
 | 命令代理 | `proxy curl https://...` | 设置 `ALL_PROXY` 环境变量 + curl `--proxy` 参数 | 命令行工具临时走代理 |
 | 系统代理 | `proxy system` | 设置 Windows 系统代理注册表 | Chrome/Edge 等浏览器 |
 
-## 快速开始
+## 安装
+
+### 1. 安装 proxy-cli
 
 ```powershell
-# 安装
+# 克隆仓库
+git clone https://github.com/your-username/proxy-cli-windows-v2.git
+cd proxy-cli-windows-v2
+
+# 运行安装脚本（自动添加到 PATH）
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 
-# 重新打开终端后
-proxy init
-
-# 配置 sing-box（指向你已有的配置文件）
-proxy singbox config "C:\path\to\sing-box.exe" "C:\path\to\config.json"
-
-# 配置代理端口（与 sing-box 的入站端口一致）
-proxy config set socks5 127.0.0.1 7890
-
-# 测试连接
-proxy test
-
-# 启动全部服务
-proxy start
-
-# 验证 WinDivert 透明代理
-curl https://httpbin.org/ip   # 应返回代理 IP
+# 重新打开终端后生效
 ```
 
-## 按应用透明代理
+安装后会自动将 `proxy.ps1` 复制到 `%USERPROFILE%\bin` 并加入 PATH。
+
+### 2. 安装 sing-box
+
+sing-box 是代理核心，负责实际的流量转发（直连、VMess、Trojan、Shadowsocks 等）。
+
+**方式 A：手动下载（推荐）**
+
+1. 前往 [sing-box GitHub Releases](https://github.com/SagerNet/sing-box/releases)
+2. 下载 `sing-box-{version}-windows-amd64.zip`
+3. 解压到一个目录，例如 `C:\sing-box\`
+4. 记住 `sing-box.exe` 的完整路径和你的配置文件路径
+
+**方式 B：使用 scoop**
+
+```powershell
+scoop install sing-box
+```
+
+**方式 C：使用 winget**
+
+```powershell
+winget install sagernet.sing-box
+```
+
+安装后需要准备一个 sing-box 配置文件。proxy CLI 不生成 sing-box 配置，你需要自己提供。
+
+### 3. 安装 ProxyBridge
+
+ProxyBridge 负责按应用分流，通过 WinDivert 内核驱动拦截指定进程的网络流量。
+
+**方式 A：下载安装包（推荐）**
+
+1. 前往 [ProxyBridge GitHub Releases](https://github.com/InterceptSuite/ProxyBridge/releases)
+2. 下载 `ProxyBridge-Setup-{version}.exe`
+3. 安装到默认目录（例如 `C:\Program Files\ProxyBridge\`）
+4. 安装完成后记下安装目录路径
+
+**方式 B：下载便携版**
+
+1. 前往 [ProxyBridge GitHub Releases](https://github.com/InterceptSuite/ProxyBridge/releases)
+2. 下载便携版 zip
+3. 解压到任意目录（例如 `D:\ProxyBridge\`）
+
+安装后需要确保以下文件在同一目录：
+- `ProxyBridge_CLI.exe`（CLI 版本）
+- `ProxyBridgeCore.dll`（核心库）
+- `WinDivert.dll`（WinDivert 库）
+- `WinDivert64.sys`（WinDivert 驱动）
+
+## 配置
+
+### 1. 初始化配置
+
+```powershell
+proxy init
+```
+
+这会创建 `%USERPROFILE%\.proxy\config.json` 默认配置文件。
+
+### 2. 配置 sing-box
+
+```powershell
+# 告诉 proxy CLI 你的 sing-box 在哪里
+proxy singbox config "C:\path\to\sing-box.exe" "C:\path\to\config.json"
+```
+
+### 3. 配置代理端口
+
+代理端口必须与 sing-box 配置文件中入站（inbound）的端口一致：
+
+```powershell
+# 查看当前配置
+proxy config show
+
+# 设置代理端口（默认 7891，通常改为 7890 或 1080）
+proxy config set socks5 127.0.0.1 7890
+```
+
+### 4. 添加应用（可选）
+
+如果你想让某些应用自动走代理（透明代理模式）：
 
 ```powershell
 proxy add curl.exe         # 添加 curl
 proxy add git.exe          # 添加 git
 proxy add chrome.exe       # 添加 Chrome
-proxy add node.exe         # 添加 node
+proxy add node.exe         # 添加 node（慎用，会影响所有 Node 程序）
+```
+
+### 5. 启动服务
+
+```powershell
+proxy start
+```
+
+这会自动按顺序启动：
+1. sing-box（代理核心）
+2. ProxyBridge（WinDivert 拦截）
+
+### 6. 验证
+
+```powershell
+# 检查状态
+proxy status
+
+# 测试连接
+proxy test
+
+# 完整诊断
+proxy doctor
+```
+
+## 快速开始（完整流程）
+
+```powershell
+# 1. 安装
+git clone https://github.com/your-username/proxy-cli-windows-v2.git
+cd proxy-cli-windows-v2
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+
+# 2. 重新打开终端后
+proxy init
+
+# 3. 配置 sing-box 路径
+proxy singbox config "C:\Program Files\sing-box\sing-box.exe" "C:\Users\你\sing-box-config.json"
+
+# 4. 配置代理端口
+proxy config set socks5 127.0.0.1 7890
+
+# 5. 添加需要代理的应用
+proxy add curl.exe
+proxy add git.exe
+
+# 6. 启动服务
+proxy start
+
+# 7. 验证
+proxy status
+curl https://httpbin.org/ip   # 应返回代理 IP
+proxy curl https://httpbin.org/ip  # 也返回代理 IP
+```
+
+## 使用
+
+### 按应用透明代理
+
+```powershell
+proxy add curl.exe         # 添加 curl
+proxy add git.exe          # 添加 git
+proxy add chrome.exe       # 添加 Chrome
 proxy on git.exe           # 启用代理
 proxy off git.exe          # 禁用代理
 proxy rm git.exe           # 删除应用
 proxy ls                   # 列出所有应用
 ```
 
-启动 `proxy start` 后，ProxyBridge 通过 WinDivert 内核驱动拦截已添加应用的所有网络连接，透明转发到 sing-box。应用本身无需任何配置。
+启动 `proxy start` 后，已添加应用的所有网络连接会自动通过 ProxyBridge + WinDivert 拦截并转发到 sing-box。应用本身无需任何配置。
 
 ```powershell
-proxy start                # 启动服务（自动加载代理规则）
+proxy start                # 启动服务
 curl https://www.google.com # 直接 curl 即走代理
 git pull                    # 直接 git 即走代理
 ```
 
-## 命令代理
+### 命令代理
 
 任何不在内置命令列表中的命令会自动通过代理执行：
 
@@ -100,36 +234,28 @@ proxy run <任意命令> [args...]
 
 原理：临时设置 `ALL_PROXY`、`HTTP_PROXY`、`HTTPS_PROXY` 环境变量，并为 curl/git 等工具注入代理参数（`--proxy`/`-c`），命令结束后自动恢复。
 
-## 浏览器代理
+### 浏览器代理
 
 Chrome/Edge 等浏览器不支持 `ALL_PROXY` 环境变量，需要特殊处理：
-
-### 方法 1：系统代理（推荐）
 
 ```powershell
 proxy system          # 设置系统代理（Chrome/Edge 自动走代理）
 proxy system off      # 关闭系统代理
 ```
 
-设置后，Chrome/Edge 等浏览器会自动使用系统代理设置。
-
-### 方法 2：Chrome 独立启动
+或：
 
 ```powershell
 proxy chrome           # 启动 Chrome 走代理（独立 profile）
 ```
 
-会创建一个独立的 Chrome profile（`~\.proxy\chrome-proxy-profile`），与你的主 Chrome 完全隔离。每次使用 `proxy chrome` 启动即可。
-
-### 方法 3：手动启动 Chrome
+或手动启动：
 
 ```powershell
 chrome.exe --proxy-server="socks5://127.0.0.1:7890" --user-data-dir="C:\temp\chrome-proxy"
 ```
 
-### 方法 4：Chrome 扩展
-
-安装 [FoxyProxy](https://chrome.google.com/webstore/detail/foxyproxy-premium/ljfdkafmojknkokmokjnjajkogmpkiel) 或 [SwitchyOmega](https://chrome.google.com/webstore/detail/switchyomega/padekgcemlokbadohgkifiiomjicklek)，配置 SOCKS5 代理 `127.0.0.1:7890`。
+或安装 Chrome 扩展 [FoxyProxy](https://chrome.google.com/webstore/detail/foxyproxy-premium/ljfdkafmojknkokmokjnjajkogmpkiel) / [SwitchyOmega](https://chrome.google.com/webstore/detail/switchyomega/padekgcemlokbadohgkifiiomjicklek)，配置 SOCKS5 代理 `127.0.0.1:7890`。
 
 ## sing-box 管理
 
